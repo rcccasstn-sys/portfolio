@@ -64,7 +64,7 @@ async function fetchKline(code: string, market: string): Promise<Array<{ time: s
   // A股：使用网易财经接口
   const end = new Date();
   const start = new Date();
-  start.setMonth(start.getMonth() - 6);
+  start.setMonth(start.getMonth() - 18);
   const startStr = start.toISOString().slice(0, 10).replace(/-/g, "");
   const endStr = end.toISOString().slice(0, 10).replace(/-/g, "");
 
@@ -232,7 +232,7 @@ interface SignalResult {
   grade: string;
   gradeLabel: string;
   summary: string;
-  // 保留旧字段兼容前端
+  ema60w: { value: number; above: boolean }; // 60周EMA
   macd: { dif: number; dea: number; macd: number; signal: string };
   rsi: { value: number; signal: string };
 }
@@ -353,6 +353,11 @@ function analyzeSignals(kline: Array<{ open: number; high: number; low: number; 
   else if (totalScore >= -7) { grade = "E"; gradeLabel = "卖出"; }
   else { grade = "E-"; gradeLabel = "强烈卖出"; }
 
+  // EMA60周（约300个交易日），如果数据不够则用现有数据
+  const ema300 = calcEMA(closes, Math.min(300, Math.floor(closes.length * 0.8)));
+  const ema60wValue = ema300[last];
+  const above = closes[last] > ema60wValue;
+
   return {
     indicators,
     totalScore,
@@ -360,6 +365,7 @@ function analyzeSignals(kline: Array<{ open: number; high: number; low: number; 
     grade,
     gradeLabel,
     summary: `${grade} ${gradeLabel}`,
+    ema60w: { value: ema60wValue, above },
     macd: { dif: dif[last], dea: dea[last], macd: macd[last], signal: macdSignal },
     rsi: { value: rsiVal, signal: rsiSignal },
   };

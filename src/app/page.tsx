@@ -26,6 +26,13 @@ interface Quote {
   name: string;
 }
 
+interface SignalData {
+  indicators: Array<{ name: string; score: number; signal: string; detail: string }>;
+  totalScore: number; maxScore: number; grade: string; gradeLabel: string; summary: string;
+  ema60w: { value: number; above: boolean };
+  macd: { signal: string }; rsi: { value: number; signal: string };
+}
+
 interface HoldingRow extends Holding {
   currentPrice: number;
   change: number;
@@ -34,17 +41,34 @@ interface HoldingRow extends Holding {
   totalCost: number;
   profit: number;
   profitPercent: number;
+  signals?: SignalData;
 }
 
 interface WatchRow extends WatchItem {
   currentPrice: number;
   change: number;
   changePercent: number;
-  signals?: {
-    indicators: Array<{ name: string; score: number; signal: string; detail: string }>;
-    totalScore: number; maxScore: number; grade: string; gradeLabel: string; summary: string;
-    macd: { signal: string }; rsi: { value: number; signal: string };
-  };
+  signals?: SignalData;
+}
+
+function Ema60Badge({ data }: { data: { value: number; above: boolean } }) {
+  return (
+    <span title={`EMA60W: ${data.value.toFixed(2)}`} className={`text-sm font-bold ${data.above ? "text-[var(--color-red)]" : "text-[var(--color-green)]"}`}>
+      {data.above ? "+" : "-"}
+    </span>
+  );
+}
+
+function IndicatorTags({ indicators }: { indicators: Array<{ name: string; score: number; signal: string; detail: string }> }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {indicators.map((ind) => (
+        <span key={ind.name} title={ind.detail} className={`text-xs px-1.5 py-0.5 rounded cursor-default ${ind.score >= 2 ? "bg-red-900/30 text-[var(--color-red)]" : ind.score === 1 ? "bg-red-900/15 text-[var(--color-red)]" : ind.score <= -2 ? "bg-green-900/30 text-[var(--color-green)]" : ind.score === -1 ? "bg-green-900/15 text-[var(--color-green)]" : "bg-[var(--color-border)] text-[var(--color-text-muted)]"}`}>
+          {ind.name}{ind.score > 0 ? "+" : ""}{ind.score}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export default function Home() {
@@ -99,7 +123,7 @@ export default function Home() {
       const marketValue = q.price * h.quantity;
       const profit = marketValue - totalCost;
       const profitPercent = totalCost > 0 ? (profit / totalCost) * 100 : 0;
-      return { ...h, name: q.name || h.name, currentPrice: q.price, change: q.change, changePercent: q.changePercent, marketValue, totalCost, profit, profitPercent };
+      return { ...h, name: q.name || h.name, currentPrice: q.price, change: q.change, changePercent: q.changePercent, marketValue, totalCost, profit, profitPercent } as HoldingRow;
     });
     setRows(newRows);
 
@@ -110,10 +134,12 @@ export default function Home() {
     });
     setWatchRows(newWatchRows);
 
-    // Fetch signals for watchlist
-    if (watches.length) {
-      const sigRes = await fetch(`/api/stock?action=signals&codes=${watches.map((w) => w.code).join(",")}&markets=${watches.map((w) => w.market).join(",")}`);
+    // Fetch signals for all stocks (holdings + watchlist)
+    const allForSignals = [...holds, ...watches];
+    if (allForSignals.length) {
+      const sigRes = await fetch(`/api/stock?action=signals&codes=${allForSignals.map((s) => s.code).join(",")}&markets=${allForSignals.map((s) => s.market).join(",")}`);
       const sigs = await sigRes.json();
+      setRows((prev) => prev.map((r) => ({ ...r, signals: sigs[r.code] })));
       setWatchRows((prev) => prev.map((w) => ({ ...w, signals: sigs[w.code] })));
     }
 
@@ -272,9 +298,10 @@ export default function Home() {
                     <th className="text-right p-3">涨跌</th>
                     <th className="text-right p-3">成本</th>
                     <th className="text-right p-3">持仓</th>
-                    <th className="text-right p-3">市值</th>
                     <th className="text-right p-3">盈亏</th>
                     <th className="text-right p-3">收益率</th>
+                    <th className="text-center p-3" title="60周EMA">W60</th>
+                    <th className="text-left p-3">指标</th>
                     <th className="text-center p-3">操作</th>
                   </tr>
                 </thead>
@@ -305,9 +332,10 @@ export default function Home() {
                         <>
                           <td className="text-right p-3"><input autoFocus value={editCost} onChange={(e) => setEditCost(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveHolding(r.code); if (e.key === "Escape") setEditingHolding(null); }} className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-0.5 text-xs w-20 text-right font-mono" /></td>
                           <td className="text-right p-3"><input value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveHolding(r.code); if (e.key === "Escape") setEditingHolding(null); }} className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-0.5 text-xs w-16 text-right font-mono" /></td>
-                          <td className="text-right p-3 font-mono">{fmt(r.marketValue)}</td>
                           <td className={`text-right p-3 font-mono ${pnlColor(r.profit)}`}>{r.profit > 0 ? "+" : ""}{fmt(r.profit)}</td>
                           <td className={`text-right p-3 font-mono ${pnlColor(r.profitPercent)}`}>{r.profitPercent > 0 ? "+" : ""}{r.profitPercent.toFixed(2)}%</td>
+                          <td className="text-center p-3">{r.signals ? <Ema60Badge data={r.signals.ema60w} /> : <span className="text-xs text-[var(--color-text-muted)]">...</span>}</td>
+                          <td className="p-3">{r.signals && <IndicatorTags indicators={r.signals.indicators} />}</td>
                           <td className="text-center p-3 whitespace-nowrap">
                             <button onClick={() => handleSaveHolding(r.code)} className="text-xs text-[var(--color-blue)] mr-2">保存</button>
                             <button onClick={() => setEditingHolding(null)} className="text-xs text-[var(--color-text-muted)]">取消</button>
@@ -317,9 +345,10 @@ export default function Home() {
                         <>
                           <td className="text-right p-3 font-mono">{fmt(r.cost)}</td>
                           <td className="text-right p-3 font-mono">{r.quantity}</td>
-                          <td className="text-right p-3 font-mono">{fmt(r.marketValue)}</td>
                           <td className={`text-right p-3 font-mono ${pnlColor(r.profit)}`}>{r.profit > 0 ? "+" : ""}{fmt(r.profit)}</td>
                           <td className={`text-right p-3 font-mono ${pnlColor(r.profitPercent)}`}>{r.profitPercent > 0 ? "+" : ""}{r.profitPercent.toFixed(2)}%</td>
+                          <td className="text-center p-3">{r.signals ? <Ema60Badge data={r.signals.ema60w} /> : <span className="text-xs text-[var(--color-text-muted)]">...</span>}</td>
+                          <td className="p-3">{r.signals ? <IndicatorTags indicators={r.signals.indicators} /> : <span className="text-xs text-[var(--color-text-muted)]">计算中...</span>}</td>
                           <td className="text-center p-3 whitespace-nowrap">
                             <button onClick={() => { setEditingHolding(r.code); setEditCost(String(r.cost)); setEditQuantity(String(r.quantity)); }} className="text-xs text-[var(--color-blue)] mr-2">编辑</button>
                             <button onClick={() => handleToWatch(r)} className="text-xs text-[var(--color-yellow)] mr-2">转备选</button>
@@ -329,7 +358,7 @@ export default function Home() {
                       )}
                     </tr>
                   ))}
-                  {rows.length === 0 && <tr><td colSpan={9} className="text-center p-6 text-[var(--color-text-muted)]">暂无持仓</td></tr>}
+                  {rows.length === 0 && <tr><td colSpan={10} className="text-center p-6 text-[var(--color-text-muted)]">暂无持仓</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -372,6 +401,7 @@ export default function Home() {
                     <th className="text-right p-3">现价</th>
                     <th className="text-right p-3">涨跌</th>
                     <th className="text-center p-3">评级</th>
+                    <th className="text-center p-3" title="60周EMA">W60</th>
                     <th className="text-left p-3">指标详情</th>
                     <th className="text-center p-3">操作</th>
                   </tr>
@@ -410,16 +440,11 @@ export default function Home() {
                           </div>
                         ) : <span className="text-xs text-[var(--color-text-muted)]">计算中...</span>}
                       </td>
+                      <td className="text-center p-3">
+                        {w.signals ? <Ema60Badge data={w.signals.ema60w} /> : <span className="text-xs text-[var(--color-text-muted)]">...</span>}
+                      </td>
                       <td className="text-left p-3">
-                        {w.signals ? (
-                          <div className="flex flex-wrap gap-1">
-                            {w.signals.indicators.map((ind) => (
-                              <span key={ind.name} title={ind.detail} className={`text-xs px-1.5 py-0.5 rounded cursor-default ${ind.score >= 2 ? "bg-red-900/30 text-[var(--color-red)]" : ind.score === 1 ? "bg-red-900/15 text-[var(--color-red)]" : ind.score <= -2 ? "bg-green-900/30 text-[var(--color-green)]" : ind.score === -1 ? "bg-green-900/15 text-[var(--color-green)]" : "bg-[var(--color-border)] text-[var(--color-text-muted)]"}`}>
-                                {ind.name}{ind.score > 0 ? "+" : ""}{ind.score} {ind.signal}
-                              </span>
-                            ))}
-                          </div>
-                        ) : <span className="text-xs text-[var(--color-text-muted)]">...</span>}
+                        {w.signals ? <IndicatorTags indicators={w.signals.indicators} /> : <span className="text-xs text-[var(--color-text-muted)]">...</span>}
                       </td>
                       <td className="text-center p-3 whitespace-nowrap">
                         {convertingWatch === w.code ? (
@@ -440,7 +465,7 @@ export default function Home() {
                       </td>
                     </tr>
                   ))}
-                  {watchRows.length === 0 && <tr><td colSpan={6} className="text-center p-6 text-[var(--color-text-muted)]">暂无备选股票</td></tr>}
+                  {watchRows.length === 0 && <tr><td colSpan={7} className="text-center p-6 text-[var(--color-text-muted)]">暂无备选股票</td></tr>}
                 </tbody>
               </table>
             </div>
