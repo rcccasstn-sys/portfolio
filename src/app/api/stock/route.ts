@@ -56,81 +56,33 @@ async function fetchSinaQuote(codes: string[], markets?: string[]): Promise<Reco
   return result;
 }
 
-// 获取 K 线数据（日线，支持A股+港股）
-async function fetchKline(code: string, market: string): Promise<Array<{ time: string; open: number; high: number; low: number; close: number; volume: number }>> {
-  if (market === "hk") {
-    return fetchKlineHK(code);
+// 获取 K 线数据（日线，统一使用新浪接口，支持A股+港股）
+type KlineItem = { time: string; open: number; high: number; low: number; close: number; volume: number };
+
+async function fetchKline(code: string, market: string): Promise<KlineItem[]> {
+  const symbol = market === "hk" ? `hk${code}` : market === "sh" ? `sh${code}` : `sz${code}`;
+  const url = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=${symbol}&scale=240&ma=no&datalen=400`;
+
+  try {
+    const res = await fetch(url, {
+      headers: { Referer: "https://finance.sina.com.cn" },
+      cache: "no-store",
+    });
+    const text = await res.text();
+    if (!text || text === "null") return [];
+
+    const raw = JSON.parse(text) as Array<{ day: string; open: string; high: string; low: string; close: string; volume: string }>;
+    return raw.map((d) => ({
+      time: d.day,
+      open: parseFloat(d.open),
+      high: parseFloat(d.high),
+      low: parseFloat(d.low),
+      close: parseFloat(d.close),
+      volume: parseFloat(d.volume) || 0,
+    }));
+  } catch {
+    return [];
   }
-  // A股：使用网易财经接口
-  const end = new Date();
-  const start = new Date();
-  start.setMonth(start.getMonth() - 18);
-  const startStr = start.toISOString().slice(0, 10).replace(/-/g, "");
-  const endStr = end.toISOString().slice(0, 10).replace(/-/g, "");
-
-  const symbol = market === "sh" ? `0${code}` : `1${code}`;
-  const url = `https://quotes.money.163.com/service/chddata.html?code=${symbol}&start=${startStr}&end=${endStr}&fields=TOPEN;HIGH;LOW;TCLOSE;VOTURNOVER`;
-
-  const res = await fetch(url, { cache: "no-store" });
-  const buf = await res.arrayBuffer();
-  const decoder = new TextDecoder("gbk");
-  const text = decoder.decode(buf);
-  const lines = text.trim().split("\n").slice(1);
-
-  const data = lines
-    .map((line) => {
-      const cols = line.split(",");
-      if (cols.length < 7) return null;
-      const date = cols[0].trim();
-      const open = parseFloat(cols[3]);
-      const high = parseFloat(cols[4]);
-      const low = parseFloat(cols[5]);
-      const close = parseFloat(cols[6]);
-      const volume = parseFloat(cols[7]) || 0;
-      if (isNaN(open) || isNaN(close)) return null;
-      return { time: date, open, high, low, close, volume };
-    })
-    .filter(Boolean)
-    .reverse();
-
-  return data as Array<{ time: string; open: number; high: number; low: number; close: number; volume: number }>;
-}
-
-// 港股K线：使用新浪财经接口
-async function fetchKlineHK(code: string): Promise<Array<{ time: string; open: number; high: number; low: number; close: number; volume: number }>> {
-  const url = `https://finance.sina.com.cn/stock/hkstock/${code}/klc_kl.js`;
-  const res = await fetch(url, { headers: { Referer: "https://finance.sina.com.cn" }, cache: "no-store" });
-  const buf = await res.arrayBuffer();
-  const decoder = new TextDecoder("gbk");
-  const text = decoder.decode(buf);
-
-  // 解析格式: KLC_KL_DB_DAILY = "日期,开盘,最高,最低,收盘,成交量\n..."
-  const match = text.match(/"([\s\S]+?)"/);
-  if (!match) return [];
-
-  const lines = match[1].trim().split("\n");
-  const data = lines
-    .map((line) => {
-      const cols = line.split(",");
-      if (cols.length < 6) return null;
-      const date = cols[0].trim();
-      const open = parseFloat(cols[1]);
-      const high = parseFloat(cols[2]);
-      const low = parseFloat(cols[3]);
-      const close = parseFloat(cols[4]);
-      const volume = parseFloat(cols[5]) || 0;
-      if (isNaN(open) || isNaN(close)) return null;
-      return { time: date, open, high, low, close, volume };
-    })
-    .filter(Boolean);
-
-  // 只取最近6个月
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-  const cutoff = sixMonthsAgo.toISOString().slice(0, 10);
-
-  return (data as Array<{ time: string; open: number; high: number; low: number; close: number; volume: number }>)
-    .filter((d) => d.time >= cutoff);
 }
 
 // MACD/RSI 信号计算
