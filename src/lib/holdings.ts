@@ -31,6 +31,15 @@ export const defaultHoldings: Holding[] = [
   { code: "300750", name: "宁德时代", cost: 210.00, quantity: 200, market: "sz" },
 ];
 
+export interface WatchItem {
+  code: string;
+  name: string;
+  note?: string;
+  market: "sh" | "sz" | "bj";
+}
+
+export const defaultWatchlist: WatchItem[] = [];
+
 export function getFullCode(holding: Holding): string {
   return holding.market === "sh" ? `sh${holding.code}` : `sz${holding.code}`;
 }
