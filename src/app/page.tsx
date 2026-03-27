@@ -36,6 +36,8 @@ export default function Home() {
   const [showAdd, setShowAdd] = useState(false);
   const [newHolding, setNewHolding] = useState<{ code: string; name: string; note: string; cost: string; quantity: string; market: "sh" | "sz" | "bj" }>({ code: "", name: "", note: "", cost: "", quantity: "", market: "sh" });
   const [lastUpdate, setLastUpdate] = useState("");
+  const [editingNote, setEditingNote] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState("");
 
   const fetchData = useCallback(async () => {
     const holdRes = await fetch("/api/holdings");
@@ -89,6 +91,18 @@ export default function Home() {
     });
     setNewHolding({ code: "", name: "", note: "", cost: "", quantity: "", market: "sh" });
     setShowAdd(false);
+    fetchData();
+  };
+
+  const handleSaveNote = async (code: string) => {
+    const hold = holdings.find((h) => h.code === code);
+    if (!hold) return;
+    await fetch("/api/holdings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "update", holding: { ...hold, note: noteText || undefined } }),
+    });
+    setEditingNote(null);
     fetchData();
   };
 
@@ -163,10 +177,29 @@ export default function Home() {
                 <td className="p-3">
                   <Link href={`/stock/${r.code}?market=${r.market}&name=${encodeURIComponent(r.name)}`} className="hover:text-[var(--color-blue)]">
                     <div className="font-medium">{r.name}</div>
-                    <div className="text-xs text-[var(--color-text-muted)]">
-                      {r.code}{r.note && <span className="ml-1 text-[var(--color-yellow)]">| {r.note}</span>}
-                    </div>
+                    <div className="text-xs text-[var(--color-text-muted)]">{r.code}</div>
                   </Link>
+                  {editingNote === r.code ? (
+                    <div className="flex items-center gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        autoFocus
+                        value={noteText}
+                        onChange={(e) => setNoteText(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleSaveNote(r.code); if (e.key === "Escape") setEditingNote(null); }}
+                        className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-0.5 text-xs w-28"
+                        placeholder="输入备注"
+                      />
+                      <button onClick={() => handleSaveNote(r.code)} className="text-xs text-[var(--color-blue)] hover:underline">保存</button>
+                      <button onClick={() => setEditingNote(null)} className="text-xs text-[var(--color-text-muted)] hover:underline">取消</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.preventDefault(); setEditingNote(r.code); setNoteText(r.note || ""); }}
+                      className="text-xs mt-0.5 text-[var(--color-yellow)] hover:underline cursor-pointer"
+                    >
+                      {r.note ? r.note : "+ 备注"}
+                    </button>
+                  )}
                 </td>
                 <td className={`text-right p-3 font-mono ${pnlColor(r.change)}`}>{fmt(r.currentPrice)}</td>
                 <td className={`text-right p-3 font-mono ${pnlColor(r.change)}`}>
