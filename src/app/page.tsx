@@ -28,7 +28,8 @@ interface Quote {
 
 interface SignalData {
   indicators: Array<{ name: string; score: number; signal: string; detail: string }>;
-  totalScore: number; maxScore: number; grade: string; gradeLabel: string; summary: string;
+  totalScore: number; maxScore: number; rating: number; ratingLabel: string;
+  grade: string; gradeLabel: string; summary: string;
   ema60w: { value: number; above: boolean };
   macd: { signal: string }; rsi: { value: number; signal: string };
 }
@@ -59,15 +60,16 @@ function Ema60Badge({ data }: { data: { value: number; above: boolean } }) {
   );
 }
 
-function IndicatorTags({ indicators }: { indicators: Array<{ name: string; score: number; signal: string; detail: string }> }) {
+function RatingBadge({ rating, label }: { rating: number; label: string }) {
+  const color = rating >= 8 ? "text-[var(--color-red)] bg-red-900/30" :
+    rating >= 6 ? "text-[var(--color-red)] bg-red-900/15" :
+    rating === 5 ? "text-[var(--color-text-muted)] bg-[var(--color-border)]" :
+    rating >= 3 ? "text-[var(--color-green)] bg-green-900/15" :
+    "text-[var(--color-green)] bg-green-900/30";
   return (
-    <div className="flex flex-wrap gap-1">
-      {indicators.map((ind) => (
-        <span key={ind.name} title={ind.detail} className={`text-xs px-1.5 py-0.5 rounded cursor-default ${ind.score >= 2 ? "bg-red-900/30 text-[var(--color-red)]" : ind.score === 1 ? "bg-red-900/15 text-[var(--color-red)]" : ind.score <= -2 ? "bg-green-900/30 text-[var(--color-green)]" : ind.score === -1 ? "bg-green-900/15 text-[var(--color-green)]" : "bg-[var(--color-border)] text-[var(--color-text-muted)]"}`}>
-          {ind.name}{ind.score > 0 ? "+" : ""}{ind.score}
-        </span>
-      ))}
-    </div>
+    <span title={label} className={`inline-flex items-center gap-1 text-sm font-bold px-2 py-0.5 rounded ${color}`}>
+      {rating}
+    </span>
   );
 }
 
@@ -236,20 +238,6 @@ export default function Home() {
   const pnlColor = (v: number) => (v > 0 ? "text-[var(--color-red)]" : v < 0 ? "text-[var(--color-green)]" : "text-[var(--color-text-muted)]");
   const fmt = (v: number) => v.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const gradeColor = (g: string) => {
-    if (g === "A+" || g === "A") return "bg-red-900/30 text-[var(--color-red)]";
-    if (g === "B") return "bg-red-900/15 text-[var(--color-red)]";
-    if (g === "C") return "bg-[var(--color-border)] text-[var(--color-text-muted)]";
-    if (g === "D") return "bg-green-900/15 text-[var(--color-green)]";
-    return "bg-green-900/30 text-[var(--color-green)]";
-  };
-
-  const signalColor = (s: string) => {
-    if (s.includes("买入") || s.includes("超卖") || s.includes("偏多")) return "text-[var(--color-red)] bg-red-900/20";
-    if (s.includes("卖出") || s.includes("超买") || s.includes("偏空")) return "text-[var(--color-green)] bg-green-900/20";
-    return "text-[var(--color-text-muted)] bg-[var(--color-border)]";
-  };
-
   if (loading) return <div className="flex items-center justify-center min-h-screen text-[var(--color-text-muted)]">加载中...</div>;
 
   return (
@@ -302,7 +290,7 @@ export default function Home() {
                     <th className="text-right p-3">盈亏</th>
                     <th className="text-right p-3">收益率</th>
                     <th className="text-center p-3" title="60周EMA">W60</th>
-                    <th className="text-left p-3">指标</th>
+                    <th className="text-center p-3">评分</th>
                     <th className="text-center p-3">操作</th>
                   </tr>
                 </thead>
@@ -337,7 +325,7 @@ export default function Home() {
                           <td className={`text-right p-3 font-mono ${pnlColor(r.profit)}`}>{r.profit > 0 ? "+" : ""}{fmt(r.profit)}</td>
                           <td className={`text-right p-3 font-mono ${pnlColor(r.profitPercent)}`}>{r.profitPercent > 0 ? "+" : ""}{r.profitPercent.toFixed(2)}%</td>
                           <td className="text-center p-3">{r.signals ? <Ema60Badge data={r.signals.ema60w} /> : <span className="text-xs text-[var(--color-text-muted)]">...</span>}</td>
-                          <td className="p-3">{r.signals && <IndicatorTags indicators={r.signals.indicators} />}</td>
+                          <td className="text-center p-3">{r.signals ? <RatingBadge rating={r.signals.rating} label={r.signals.ratingLabel} /> : <span className="text-xs text-[var(--color-text-muted)]">...</span>}</td>
                           <td className="text-center p-3 whitespace-nowrap">
                             <button onClick={() => handleSaveHolding(r.code)} className="text-xs text-[var(--color-blue)] mr-2">保存</button>
                             <button onClick={() => setEditingHolding(null)} className="text-xs text-[var(--color-text-muted)]">取消</button>
@@ -351,7 +339,7 @@ export default function Home() {
                           <td className={`text-right p-3 font-mono ${pnlColor(r.profit)}`}>{r.profit > 0 ? "+" : ""}{fmt(r.profit)}</td>
                           <td className={`text-right p-3 font-mono ${pnlColor(r.profitPercent)}`}>{r.profitPercent > 0 ? "+" : ""}{r.profitPercent.toFixed(2)}%</td>
                           <td className="text-center p-3">{r.signals ? <Ema60Badge data={r.signals.ema60w} /> : <span className="text-xs text-[var(--color-text-muted)]">...</span>}</td>
-                          <td className="p-3">{r.signals ? <IndicatorTags indicators={r.signals.indicators} /> : <span className="text-xs text-[var(--color-text-muted)]">计算中...</span>}</td>
+                          <td className="text-center p-3">{r.signals ? <RatingBadge rating={r.signals.rating} label={r.signals.ratingLabel} /> : <span className="text-xs text-[var(--color-text-muted)]">...</span>}</td>
                           <td className="text-center p-3 whitespace-nowrap">
                             <button onClick={() => { setEditingHolding(r.code); setEditCost(String(r.cost)); setEditQuantity(String(r.quantity)); }} className="text-xs text-[var(--color-blue)] mr-2">编辑</button>
                             <button onClick={() => handleToWatch(r)} className="text-xs text-[var(--color-yellow)] mr-2">转备选</button>
@@ -403,9 +391,8 @@ export default function Home() {
                     <th className="text-left p-3">股票</th>
                     <th className="text-right p-3">现价</th>
                     <th className="text-right p-3">涨跌</th>
-                    <th className="text-center p-3">评级</th>
+                    <th className="text-center p-3">评分</th>
                     <th className="text-center p-3" title="60周EMA">W60</th>
-                    <th className="text-left p-3">指标详情</th>
                     <th className="text-center p-3">操作</th>
                   </tr>
                 </thead>
@@ -435,19 +422,13 @@ export default function Home() {
                       <td className="text-center p-3">
                         {w.signals ? (
                           <div>
-                            <span className={`text-sm font-bold px-2 py-1 rounded ${gradeColor(w.signals.grade)}`}>
-                              {w.signals.grade}
-                            </span>
-                            <div className="text-xs mt-1">{w.signals.gradeLabel}</div>
-                            <div className="text-xs text-[var(--color-text-muted)]">{w.signals.totalScore}/{w.signals.maxScore}分</div>
+                            <RatingBadge rating={w.signals.rating} label={w.signals.ratingLabel} />
+                            <div className="text-xs mt-1 text-[var(--color-text-muted)]">{w.signals.ratingLabel}</div>
                           </div>
-                        ) : <span className="text-xs text-[var(--color-text-muted)]">计算中...</span>}
+                        ) : <span className="text-xs text-[var(--color-text-muted)]">...</span>}
                       </td>
                       <td className="text-center p-3">
                         {w.signals ? <Ema60Badge data={w.signals.ema60w} /> : <span className="text-xs text-[var(--color-text-muted)]">...</span>}
-                      </td>
-                      <td className="text-left p-3">
-                        {w.signals ? <IndicatorTags indicators={w.signals.indicators} /> : <span className="text-xs text-[var(--color-text-muted)]">...</span>}
                       </td>
                       <td className="text-center p-3 whitespace-nowrap">
                         {convertingWatch === w.code ? (
@@ -468,7 +449,7 @@ export default function Home() {
                       </td>
                     </tr>
                   ))}
-                  {watchRows.length === 0 && <tr><td colSpan={7} className="text-center p-6 text-[var(--color-text-muted)]">暂无备选股票</td></tr>}
+                  {watchRows.length === 0 && <tr><td colSpan={6} className="text-center p-6 text-[var(--color-text-muted)]">暂无备选股票</td></tr>}
                 </tbody>
               </table>
             </div>

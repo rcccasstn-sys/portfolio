@@ -187,10 +187,12 @@ interface SignalResult {
   indicators: IndicatorScore[];
   totalScore: number;
   maxScore: number;
+  rating: number; // 1-10 评分指数
+  ratingLabel: string;
   grade: string;
   gradeLabel: string;
   summary: string;
-  ema60w: { value: number; above: boolean }; // 60周EMA
+  ema60w: { value: number; above: boolean };
   macd: { dif: number; dea: number; macd: number; signal: string };
   rsi: { value: number; signal: string };
 }
@@ -302,14 +304,18 @@ function analyzeSignals(kline: Array<{ open: number; high: number; low: number; 
   const totalScore = indicators.reduce((s, i) => s + i.score, 0);
   const maxScore = indicators.length * 2;
 
-  let grade: string, gradeLabel: string;
-  if (totalScore >= 8) { grade = "A+"; gradeLabel = "强烈买入"; }
-  else if (totalScore >= 5) { grade = "A"; gradeLabel = "买入"; }
-  else if (totalScore >= 2) { grade = "B"; gradeLabel = "偏多"; }
-  else if (totalScore >= -1) { grade = "C"; gradeLabel = "观望"; }
-  else if (totalScore >= -4) { grade = "D"; gradeLabel = "偏空"; }
-  else if (totalScore >= -7) { grade = "E"; gradeLabel = "卖出"; }
-  else { grade = "E-"; gradeLabel = "强烈卖出"; }
+  // 评分指数 1-10：将 totalScore(-12~+12) 映射到 1~10
+  const rating = Math.round(Math.min(10, Math.max(1, ((totalScore + maxScore) / (maxScore * 2)) * 9 + 1)));
+  let ratingLabel: string;
+  if (rating >= 9) ratingLabel = "强烈买入";
+  else if (rating >= 7) ratingLabel = "买入";
+  else if (rating >= 6) ratingLabel = "偏多";
+  else if (rating === 5) ratingLabel = "观望";
+  else if (rating === 4) ratingLabel = "偏空";
+  else if (rating >= 2) ratingLabel = "卖出";
+  else ratingLabel = "强烈卖出";
+
+  const grade = rating >= 9 ? "A+" : rating >= 7 ? "A" : rating >= 6 ? "B" : rating === 5 ? "C" : rating === 4 ? "D" : rating >= 2 ? "E" : "E-";
 
   // EMA60周（约300个交易日），如果数据不够则用现有数据
   const ema300 = calcEMA(closes, Math.min(300, Math.floor(closes.length * 0.8)));
@@ -320,9 +326,11 @@ function analyzeSignals(kline: Array<{ open: number; high: number; low: number; 
     indicators,
     totalScore,
     maxScore,
+    rating,
+    ratingLabel,
     grade,
-    gradeLabel,
-    summary: `${grade} ${gradeLabel}`,
+    gradeLabel: ratingLabel,
+    summary: `${rating} ${ratingLabel}`,
     ema60w: { value: ema60wValue, above },
     macd: { dif: dif[last], dea: dea[last], macd: macd[last], signal: macdSignal },
     rsi: { value: rsiVal, signal: rsiSignal },
