@@ -56,33 +56,39 @@ async function fetchSinaQuote(codes: string[], markets?: string[]): Promise<Reco
   return result;
 }
 
-// 获取 K 线数据（日线，统一使用新浪接口，支持A股+港股）
+// 获取 K 线数据（日线）
 type KlineItem = { time: string; open: number; high: number; low: number; close: number; volume: number };
 
 async function fetchKline(code: string, market: string): Promise<KlineItem[]> {
-  const symbol = market === "hk" ? `hk${code}` : market === "sh" ? `sh${code}` : `sz${code}`;
-  const url = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=${symbol}&scale=240&ma=no&datalen=400`;
-
+  if (market === "hk") return fetchKlineTencent(`hk${code}`);
+  // A股用新浪
+  const symbol = market === "sh" ? `sh${code}` : `sz${code}`;
   try {
-    const res = await fetch(url, {
-      headers: { Referer: "https://finance.sina.com.cn" },
-      cache: "no-store",
-    });
+    const url = `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol=${symbol}&scale=240&ma=no&datalen=400`;
+    const res = await fetch(url, { headers: { Referer: "https://finance.sina.com.cn" }, cache: "no-store" });
     const text = await res.text();
     if (!text || text === "null") return [];
-
     const raw = JSON.parse(text) as Array<{ day: string; open: string; high: string; low: string; close: string; volume: string }>;
     return raw.map((d) => ({
-      time: d.day,
-      open: parseFloat(d.open),
-      high: parseFloat(d.high),
-      low: parseFloat(d.low),
-      close: parseFloat(d.close),
-      volume: parseFloat(d.volume) || 0,
+      time: d.day, open: parseFloat(d.open), high: parseFloat(d.high),
+      low: parseFloat(d.low), close: parseFloat(d.close), volume: parseFloat(d.volume) || 0,
     }));
-  } catch {
-    return [];
-  }
+  } catch { return []; }
+}
+
+// 港股用腾讯接口
+async function fetchKlineTencent(symbol: string): Promise<KlineItem[]> {
+  try {
+    const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,400,qfq`;
+    const res = await fetch(url, { cache: "no-store" });
+    const json = await res.json();
+    const key = Object.keys(json.data)[0];
+    const days = json.data[key].day || json.data[key].qfqday || [];
+    return (days as string[][]).map((d: string[]) => ({
+      time: d[0], open: parseFloat(d[1]), high: parseFloat(d[3]),
+      low: parseFloat(d[4]), close: parseFloat(d[2]), volume: parseFloat(d[5]) || 0,
+    }));
+  } catch { return []; }
 }
 
 // MACD/RSI 信号计算
