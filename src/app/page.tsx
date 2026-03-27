@@ -64,6 +64,10 @@ export default function Home() {
   const [noteText, setNoteText] = useState("");
   const [noteTarget, setNoteTarget] = useState<"holding" | "watch">("holding");
 
+  const [editingHolding, setEditingHolding] = useState<string | null>(null);
+  const [editCost, setEditCost] = useState("");
+  const [editQuantity, setEditQuantity] = useState("");
+
   const fetchData = useCallback(async () => {
     // Fetch holdings
     const holdRes = await fetch("/api/holdings");
@@ -151,6 +155,39 @@ export default function Home() {
 
   const handleRemoveWatch = async (code: string) => {
     await fetch("/api/watchlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remove", item: { code } }) });
+    fetchData();
+  };
+
+  // 保存编辑的成本/数量
+  const handleSaveHolding = async (code: string) => {
+    const hold = holdings.find((h) => h.code === code);
+    if (!hold) return;
+    await fetch("/api/holdings", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "update", holding: { ...hold, cost: parseFloat(editCost) || hold.cost, quantity: parseInt(editQuantity) || hold.quantity } }),
+    });
+    setEditingHolding(null);
+    fetchData();
+  };
+
+  // 持仓 → 备选
+  const handleToWatch = async (r: HoldingRow) => {
+    await fetch("/api/holdings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remove", holding: { code: r.code } }) });
+    await fetch("/api/watchlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "add", item: { code: r.code, name: r.name, note: r.note, market: r.market } }) });
+    fetchData();
+  };
+
+  // 备选 → 持仓（弹出输入成本和数量）
+  const [convertingWatch, setConvertingWatch] = useState<string | null>(null);
+  const [convertCost, setConvertCost] = useState("");
+  const [convertQuantity, setConvertQuantity] = useState("");
+
+  const handleToHolding = async (w: WatchRow) => {
+    await fetch("/api/watchlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remove", item: { code: w.code } }) });
+    await fetch("/api/holdings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "add", holding: { code: w.code, name: w.name, note: w.note, market: w.market, cost: parseFloat(convertCost) || 0, quantity: parseInt(convertQuantity) || 0 } }) });
+    setConvertingWatch(null);
+    setConvertCost("");
+    setConvertQuantity("");
     fetchData();
   };
 
@@ -252,14 +289,32 @@ export default function Home() {
                       </td>
                       <td className={`text-right p-3 font-mono ${pnlColor(r.change)}`}>{fmt(r.currentPrice)}</td>
                       <td className={`text-right p-3 font-mono ${pnlColor(r.change)}`}>{r.change > 0 ? "+" : ""}{r.changePercent.toFixed(2)}%</td>
-                      <td className="text-right p-3 font-mono">{fmt(r.cost)}</td>
-                      <td className="text-right p-3 font-mono">{r.quantity}</td>
-                      <td className="text-right p-3 font-mono">{fmt(r.marketValue)}</td>
-                      <td className={`text-right p-3 font-mono ${pnlColor(r.profit)}`}>{r.profit > 0 ? "+" : ""}{fmt(r.profit)}</td>
-                      <td className={`text-right p-3 font-mono ${pnlColor(r.profitPercent)}`}>{r.profitPercent > 0 ? "+" : ""}{r.profitPercent.toFixed(2)}%</td>
-                      <td className="text-center p-3">
-                        <button onClick={() => handleRemoveHolding(r.code)} className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-red)]">删除</button>
-                      </td>
+                      {editingHolding === r.code ? (
+                        <>
+                          <td className="text-right p-3"><input autoFocus value={editCost} onChange={(e) => setEditCost(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveHolding(r.code); if (e.key === "Escape") setEditingHolding(null); }} className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-0.5 text-xs w-20 text-right font-mono" /></td>
+                          <td className="text-right p-3"><input value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveHolding(r.code); if (e.key === "Escape") setEditingHolding(null); }} className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-0.5 text-xs w-16 text-right font-mono" /></td>
+                          <td className="text-right p-3 font-mono">{fmt(r.marketValue)}</td>
+                          <td className={`text-right p-3 font-mono ${pnlColor(r.profit)}`}>{r.profit > 0 ? "+" : ""}{fmt(r.profit)}</td>
+                          <td className={`text-right p-3 font-mono ${pnlColor(r.profitPercent)}`}>{r.profitPercent > 0 ? "+" : ""}{r.profitPercent.toFixed(2)}%</td>
+                          <td className="text-center p-3 whitespace-nowrap">
+                            <button onClick={() => handleSaveHolding(r.code)} className="text-xs text-[var(--color-blue)] mr-2">保存</button>
+                            <button onClick={() => setEditingHolding(null)} className="text-xs text-[var(--color-text-muted)]">取消</button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="text-right p-3 font-mono">{fmt(r.cost)}</td>
+                          <td className="text-right p-3 font-mono">{r.quantity}</td>
+                          <td className="text-right p-3 font-mono">{fmt(r.marketValue)}</td>
+                          <td className={`text-right p-3 font-mono ${pnlColor(r.profit)}`}>{r.profit > 0 ? "+" : ""}{fmt(r.profit)}</td>
+                          <td className={`text-right p-3 font-mono ${pnlColor(r.profitPercent)}`}>{r.profitPercent > 0 ? "+" : ""}{r.profitPercent.toFixed(2)}%</td>
+                          <td className="text-center p-3 whitespace-nowrap">
+                            <button onClick={() => { setEditingHolding(r.code); setEditCost(String(r.cost)); setEditQuantity(String(r.quantity)); }} className="text-xs text-[var(--color-blue)] mr-2">编辑</button>
+                            <button onClick={() => handleToWatch(r)} className="text-xs text-[var(--color-yellow)] mr-2">转备选</button>
+                            <button onClick={() => handleRemoveHolding(r.code)} className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-red)]">删除</button>
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))}
                   {rows.length === 0 && <tr><td colSpan={9} className="text-center p-6 text-[var(--color-text-muted)]">暂无持仓</td></tr>}
@@ -350,8 +405,22 @@ export default function Home() {
                           <span className={`text-xs px-2 py-1 rounded font-bold ${signalColor(w.signals.summary)}`}>{w.signals.summary}</span>
                         ) : <span className="text-xs text-[var(--color-text-muted)]">...</span>}
                       </td>
-                      <td className="text-center p-3">
-                        <button onClick={() => handleRemoveWatch(w.code)} className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-red)]">删除</button>
+                      <td className="text-center p-3 whitespace-nowrap">
+                        {convertingWatch === w.code ? (
+                          <div className="flex items-center gap-1 justify-center">
+                            <input value={convertCost} onChange={(e) => setConvertCost(e.target.value)} placeholder="成本" className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-xs w-14 font-mono" />
+                            <input value={convertQuantity} onChange={(e) => setConvertQuantity(e.target.value)} placeholder="数量"
+                              onKeyDown={(e) => { if (e.key === "Enter") handleToHolding(w); if (e.key === "Escape") setConvertingWatch(null); }}
+                              className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-xs w-14 font-mono" />
+                            <button onClick={() => handleToHolding(w)} className="text-xs text-[var(--color-blue)]">确认</button>
+                            <button onClick={() => setConvertingWatch(null)} className="text-xs text-[var(--color-text-muted)]">取消</button>
+                          </div>
+                        ) : (
+                          <>
+                            <button onClick={() => { setConvertingWatch(w.code); setConvertCost(""); setConvertQuantity(""); }} className="text-xs text-[var(--color-yellow)] mr-2">转持仓</button>
+                            <button onClick={() => handleRemoveWatch(w.code)} className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-red)]">删除</button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}
