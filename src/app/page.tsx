@@ -6,6 +6,7 @@ import Link from "next/link";
 interface Holding {
   code: string;
   name: string;
+  note?: string;
   cost: number;
   quantity: number;
   market: "sh" | "sz" | "bj";
@@ -33,7 +34,7 @@ export default function Home() {
   const [rows, setRows] = useState<HoldingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [newHolding, setNewHolding] = useState<{ code: string; name: string; cost: string; quantity: string; market: "sh" | "sz" | "bj" }>({ code: "", name: "", cost: "", quantity: "", market: "sh" });
+  const [newHolding, setNewHolding] = useState<{ code: string; name: string; note: string; cost: string; quantity: string; market: "sh" | "sz" | "bj" }>({ code: "", name: "", note: "", cost: "", quantity: "", market: "sh" });
   const [lastUpdate, setLastUpdate] = useState("");
 
   const fetchData = useCallback(async () => {
@@ -76,6 +77,7 @@ export default function Home() {
     const holding: Holding = {
       code: newHolding.code,
       name: newHolding.name,
+      note: newHolding.note || undefined,
       cost: parseFloat(newHolding.cost),
       quantity: parseInt(newHolding.quantity),
       market: newHolding.market as "sh" | "sz" | "bj",
@@ -85,7 +87,7 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "add", holding }),
     });
-    setNewHolding({ code: "", name: "", cost: "", quantity: "", market: "sh" });
+    setNewHolding({ code: "", name: "", note: "", cost: "", quantity: "", market: "sh" });
     setShowAdd(false);
     fetchData();
   };
@@ -161,7 +163,9 @@ export default function Home() {
                 <td className="p-3">
                   <Link href={`/stock/${r.code}?market=${r.market}&name=${encodeURIComponent(r.name)}`} className="hover:text-[var(--color-blue)]">
                     <div className="font-medium">{r.name}</div>
-                    <div className="text-xs text-[var(--color-text-muted)]">{r.code}</div>
+                    <div className="text-xs text-[var(--color-text-muted)]">
+                      {r.code}{r.note && <span className="ml-1 text-[var(--color-yellow)]">| {r.note}</span>}
+                    </div>
                   </Link>
                 </td>
                 <td className={`text-right p-3 font-mono ${pnlColor(r.change)}`}>{fmt(r.currentPrice)}</td>
@@ -195,10 +199,12 @@ export default function Home() {
       {showAdd ? (
         <div className="bg-[var(--color-card)] rounded-lg border border-[var(--color-border)] p-4 mb-4">
           <h3 className="font-bold mb-3">添加持仓</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
             <input placeholder="股票代码" value={newHolding.code} onChange={(e) => setNewHolding({ ...newHolding, code: e.target.value })}
               className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-3 py-2 text-sm" />
             <input placeholder="股票名称" value={newHolding.name} onChange={(e) => setNewHolding({ ...newHolding, name: e.target.value })}
+              className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-3 py-2 text-sm" />
+            <input placeholder="备注（选填）" value={newHolding.note} onChange={(e) => setNewHolding({ ...newHolding, note: e.target.value })}
               className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-3 py-2 text-sm" />
             <input placeholder="成本价" type="number" step="0.01" value={newHolding.cost} onChange={(e) => setNewHolding({ ...newHolding, cost: e.target.value })}
               className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-3 py-2 text-sm" />

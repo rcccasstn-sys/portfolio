@@ -1,6 +1,7 @@
 export interface Holding {
   code: string;
   name: string;
+  note?: string;
   cost: number;
   quantity: number;
   market: "sh" | "sz" | "bj";
