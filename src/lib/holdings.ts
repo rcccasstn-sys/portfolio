@@ -4,7 +4,7 @@ export interface Holding {
   note?: string;
   cost: number;
   quantity: number;
-  market: "sh" | "sz" | "bj";
+  market: "sh" | "sz" | "bj" | "hk";
 }
 
 export interface HoldingWithPrice extends Holding {
@@ -35,7 +35,7 @@ export interface WatchItem {
   code: string;
   name: string;
   note?: string;
-  market: "sh" | "sz" | "bj";
+  market: "sh" | "sz" | "bj" | "hk";
 }
 
 export const defaultWatchlist: WatchItem[] = [];

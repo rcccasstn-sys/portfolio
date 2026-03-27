@@ -9,14 +9,14 @@ interface Holding {
   note?: string;
   cost: number;
   quantity: number;
-  market: "sh" | "sz" | "bj";
+  market: "sh" | "sz" | "bj" | "hk";
 }
 
 interface WatchItem {
   code: string;
   name: string;
   note?: string;
-  market: "sh" | "sz" | "bj";
+  market: "sh" | "sz" | "bj" | "hk";
 }
 
 interface Quote {
@@ -55,10 +55,10 @@ export default function Home() {
   const [watchOpen, setWatchOpen] = useState(true);
 
   const [showAddHolding, setShowAddHolding] = useState(false);
-  const [newHolding, setNewHolding] = useState<{ code: string; name: string; note: string; cost: string; quantity: string; market: "sh" | "sz" | "bj" }>({ code: "", name: "", note: "", cost: "", quantity: "", market: "sh" });
+  const [newHolding, setNewHolding] = useState<{ code: string; name: string; note: string; cost: string; quantity: string; market: "sh" | "sz" | "bj" | "hk" }>({ code: "", name: "", note: "", cost: "", quantity: "", market: "sh" });
 
   const [showAddWatch, setShowAddWatch] = useState(false);
-  const [newWatch, setNewWatch] = useState<{ code: string; name: string; note: string; market: "sh" | "sz" | "bj" }>({ code: "", name: "", note: "", market: "sh" });
+  const [newWatch, setNewWatch] = useState<{ code: string; name: string; note: string; market: "sh" | "sz" | "bj" | "hk" }>({ code: "", name: "", note: "", market: "sh" });
 
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteText, setNoteText] = useState("");
@@ -75,11 +75,12 @@ export default function Home() {
     const watches: WatchItem[] = await watchRes.json();
     setWatchlist(watches);
 
-    // Fetch all quotes
-    const allCodes = [...holds.map((h) => h.code), ...watches.map((w) => w.code)];
+    // Fetch all quotes with markets
+    const allItems = [...holds.map((h) => ({ code: h.code, market: h.market })), ...watches.map((w) => ({ code: w.code, market: w.market }))];
+    const uniqueItems = allItems.filter((item, i, arr) => arr.findIndex((a) => a.code === item.code) === i);
     let quotes: Record<string, Quote> = {};
-    if (allCodes.length) {
-      const quoteRes = await fetch(`/api/stock?action=quote&codes=${[...new Set(allCodes)].join(",")}`);
+    if (uniqueItems.length) {
+      const quoteRes = await fetch(`/api/stock?action=quote&codes=${uniqueItems.map((i) => i.code).join(",")}&markets=${uniqueItems.map((i) => i.market).join(",")}`);
       quotes = await quoteRes.json();
     }
 
@@ -273,7 +274,7 @@ export default function Home() {
                   <input placeholder="成本价" type="number" step="0.01" value={newHolding.cost} onChange={(e) => setNewHolding({ ...newHolding, cost: e.target.value })} className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-3 py-2 text-sm" />
                   <input placeholder="持仓数量" type="number" value={newHolding.quantity} onChange={(e) => setNewHolding({ ...newHolding, quantity: e.target.value })} className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-3 py-2 text-sm" />
                   <select value={newHolding.market} onChange={(e) => setNewHolding({ ...newHolding, market: e.target.value as Holding["market"] })} className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-3 py-2 text-sm">
-                    <option value="sh">上海</option><option value="sz">深圳</option><option value="bj">北京</option>
+                    <option value="sh">上海</option><option value="sz">深圳</option><option value="bj">北京</option><option value="hk">港股</option>
                   </select>
                   <div className="flex gap-2">
                     <button onClick={handleAddHolding} className="bg-[var(--color-blue)] text-white px-4 py-2 rounded text-sm hover:opacity-80">添加</button>
@@ -364,7 +365,7 @@ export default function Home() {
                   <input placeholder="股票代码" value={newWatch.code} onChange={(e) => setNewWatch({ ...newWatch, code: e.target.value })} className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-3 py-2 text-sm" />
                   <input placeholder="股票名称" value={newWatch.name} onChange={(e) => setNewWatch({ ...newWatch, name: e.target.value })} className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-3 py-2 text-sm" />
                   <select value={newWatch.market} onChange={(e) => setNewWatch({ ...newWatch, market: e.target.value as WatchItem["market"] })} className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-3 py-2 text-sm">
-                    <option value="sh">上海</option><option value="sz">深圳</option><option value="bj">北京</option>
+                    <option value="sh">上海</option><option value="sz">深圳</option><option value="bj">北京</option><option value="hk">港股</option>
                   </select>
                   <div className="flex gap-2">
                     <button onClick={handleAddWatch} className="bg-[var(--color-blue)] text-white px-4 py-2 rounded text-sm hover:opacity-80">添加</button>

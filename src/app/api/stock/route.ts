@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// 使用新浪财经接口获取实时行情
-async function fetchSinaQuote(codes: string[]): Promise<Record<string, { price: number; change: number; changePercent: number; name: string }>> {
-  const sinaCodes = codes.map((c) => {
+// 使用新浪财经接口获取实时行情（支持A股+港股）
+async function fetchSinaQuote(codes: string[], markets?: string[]): Promise<Record<string, { price: number; change: number; changePercent: number; name: string }>> {
+  const sinaCodes = codes.map((c, i) => {
+    const m = markets?.[i];
+    if (m === "hk") return `hk${c}`;
     if (c.startsWith("6")) return `sh${c}`;
     if (c.startsWith("0") || c.startsWith("3")) return `sz${c}`;
     if (c.startsWith("8") || c.startsWith("4")) return `bj${c}`;
@@ -21,29 +23,45 @@ async function fetchSinaQuote(codes: string[]): Promise<Record<string, { price: 
 
   const lines = text.trim().split("\n");
   for (const line of lines) {
-    const match = line.match(/hq_str_(s[hz]\d+)="(.*)"/);
-    if (!match) continue;
-    const fullCode = match[1];
-    const code = fullCode.slice(2);
-    const parts = match[2].split(",");
-    if (parts.length < 32) continue;
-
-    const name = parts[0];
-    const prevClose = parseFloat(parts[2]);
-    const currentPrice = parseFloat(parts[3]) || prevClose;
-    const change = currentPrice - prevClose;
-    const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
-
-    result[code] = { price: currentPrice, change, changePercent, name };
+    // A股格式
+    const matchA = line.match(/hq_str_(s[hz]\d+)="(.*)"/);
+    if (matchA) {
+      const code = matchA[1].slice(2);
+      const parts = matchA[2].split(",");
+      if (parts.length < 32) continue;
+      const name = parts[0];
+      const prevClose = parseFloat(parts[2]);
+      const currentPrice = parseFloat(parts[3]) || prevClose;
+      const change = currentPrice - prevClose;
+      const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
+      result[code] = { price: currentPrice, change, changePercent, name };
+      continue;
+    }
+    // 港股格式
+    const matchHK = line.match(/hq_str_hk(\d+)="(.*)"/);
+    if (matchHK) {
+      const code = matchHK[1];
+      const parts = matchHK[2].split(",");
+      if (parts.length < 10) continue;
+      const name = parts[1];
+      const currentPrice = parseFloat(parts[6]) || 0;
+      const prevClose = parseFloat(parts[3]) || 0;
+      const change = currentPrice - prevClose;
+      const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
+      result[code] = { price: currentPrice, change, changePercent, name };
+      continue;
+    }
   }
 
   return result;
 }
 
-// 获取 K 线数据（日线）
+// 获取 K 线数据（日线，支持A股+港股）
 async function fetchKline(code: string, market: string): Promise<Array<{ time: string; open: number; high: number; low: number; close: number; volume: number }>> {
-  const prefix = market === "sh" ? "sh" : "sz";
-  // 使用网易财经接口获取历史数据
+  if (market === "hk") {
+    return fetchKlineHK(code);
+  }
+  // A股：使用网易财经接口
   const end = new Date();
   const start = new Date();
   start.setMonth(start.getMonth() - 6);
@@ -57,7 +75,7 @@ async function fetchKline(code: string, market: string): Promise<Array<{ time: s
   const buf = await res.arrayBuffer();
   const decoder = new TextDecoder("gbk");
   const text = decoder.decode(buf);
-  const lines = text.trim().split("\n").slice(1); // skip header
+  const lines = text.trim().split("\n").slice(1);
 
   const data = lines
     .map((line) => {
@@ -76,6 +94,43 @@ async function fetchKline(code: string, market: string): Promise<Array<{ time: s
     .reverse();
 
   return data as Array<{ time: string; open: number; high: number; low: number; close: number; volume: number }>;
+}
+
+// 港股K线：使用新浪财经接口
+async function fetchKlineHK(code: string): Promise<Array<{ time: string; open: number; high: number; low: number; close: number; volume: number }>> {
+  const url = `https://finance.sina.com.cn/stock/hkstock/${code}/klc_kl.js`;
+  const res = await fetch(url, { headers: { Referer: "https://finance.sina.com.cn" }, cache: "no-store" });
+  const buf = await res.arrayBuffer();
+  const decoder = new TextDecoder("gbk");
+  const text = decoder.decode(buf);
+
+  // 解析格式: KLC_KL_DB_DAILY = "日期,开盘,最高,最低,收盘,成交量\n..."
+  const match = text.match(/"([\s\S]+?)"/);
+  if (!match) return [];
+
+  const lines = match[1].trim().split("\n");
+  const data = lines
+    .map((line) => {
+      const cols = line.split(",");
+      if (cols.length < 6) return null;
+      const date = cols[0].trim();
+      const open = parseFloat(cols[1]);
+      const high = parseFloat(cols[2]);
+      const low = parseFloat(cols[3]);
+      const close = parseFloat(cols[4]);
+      const volume = parseFloat(cols[5]) || 0;
+      if (isNaN(open) || isNaN(close)) return null;
+      return { time: date, open, high, low, close, volume };
+    })
+    .filter(Boolean);
+
+  // 只取最近6个月
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  const cutoff = sixMonthsAgo.toISOString().slice(0, 10);
+
+  return (data as Array<{ time: string; open: number; high: number; low: number; close: number; volume: number }>)
+    .filter((d) => d.time >= cutoff);
 }
 
 // MACD/RSI 信号计算
@@ -166,8 +221,9 @@ export async function GET(request: NextRequest) {
 
   if (action === "quote") {
     const codes = searchParams.get("codes")?.split(",") || [];
+    const markets = searchParams.get("markets")?.split(",") || [];
     if (!codes.length) return NextResponse.json({ error: "No codes" }, { status: 400 });
-    const quotes = await fetchSinaQuote(codes);
+    const quotes = await fetchSinaQuote(codes, markets.length ? markets : undefined);
     return NextResponse.json(quotes);
   }
 
