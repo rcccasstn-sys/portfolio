@@ -298,6 +298,7 @@ export default function Home() {
                     <th className="text-right p-3">涨跌</th>
                     <th className="text-right p-3">成本</th>
                     <th className="text-right p-3">持仓</th>
+                    <th className="text-right p-3">市值</th>
                     <th className="text-right p-3">盈亏</th>
                     <th className="text-right p-3">收益率</th>
                     <th className="text-center p-3" title="60周EMA">W60</th>
@@ -332,6 +333,7 @@ export default function Home() {
                         <>
                           <td className="text-right p-3"><input autoFocus value={editCost} onChange={(e) => setEditCost(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveHolding(r.code); if (e.key === "Escape") setEditingHolding(null); }} className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-0.5 text-xs w-20 text-right font-mono" /></td>
                           <td className="text-right p-3"><input value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveHolding(r.code); if (e.key === "Escape") setEditingHolding(null); }} className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-0.5 text-xs w-16 text-right font-mono" /></td>
+                          <td className="text-right p-3 font-mono">{fmt(r.marketValue)}</td>
                           <td className={`text-right p-3 font-mono ${pnlColor(r.profit)}`}>{r.profit > 0 ? "+" : ""}{fmt(r.profit)}</td>
                           <td className={`text-right p-3 font-mono ${pnlColor(r.profitPercent)}`}>{r.profitPercent > 0 ? "+" : ""}{r.profitPercent.toFixed(2)}%</td>
                           <td className="text-center p-3">{r.signals ? <Ema60Badge data={r.signals.ema60w} /> : <span className="text-xs text-[var(--color-text-muted)]">...</span>}</td>
@@ -345,6 +347,7 @@ export default function Home() {
                         <>
                           <td className="text-right p-3 font-mono">{fmt(r.cost)}</td>
                           <td className="text-right p-3 font-mono">{r.quantity}</td>
+                          <td className="text-right p-3 font-mono">{fmt(r.marketValue)}</td>
                           <td className={`text-right p-3 font-mono ${pnlColor(r.profit)}`}>{r.profit > 0 ? "+" : ""}{fmt(r.profit)}</td>
                           <td className={`text-right p-3 font-mono ${pnlColor(r.profitPercent)}`}>{r.profitPercent > 0 ? "+" : ""}{r.profitPercent.toFixed(2)}%</td>
                           <td className="text-center p-3">{r.signals ? <Ema60Badge data={r.signals.ema60w} /> : <span className="text-xs text-[var(--color-text-muted)]">...</span>}</td>
@@ -358,7 +361,7 @@ export default function Home() {
                       )}
                     </tr>
                   ))}
-                  {rows.length === 0 && <tr><td colSpan={10} className="text-center p-6 text-[var(--color-text-muted)]">暂无持仓</td></tr>}
+                  {rows.length === 0 && <tr><td colSpan={11} className="text-center p-6 text-[var(--color-text-muted)]">暂无持仓</td></tr>}
                 </tbody>
               </table>
             </div>
