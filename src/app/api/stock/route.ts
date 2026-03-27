@@ -14,7 +14,9 @@ async function fetchSinaQuote(codes: string[]): Promise<Record<string, { price: 
     headers: { Referer: "https://finance.sina.com.cn" },
     cache: "no-store",
   });
-  const text = await res.text();
+  const buf = await res.arrayBuffer();
+  const decoder = new TextDecoder("gbk");
+  const text = decoder.decode(buf);
   const result: Record<string, { price: number; change: number; changePercent: number; name: string }> = {};
 
   const lines = text.trim().split("\n");
@@ -52,7 +54,9 @@ async function fetchKline(code: string, market: string): Promise<Array<{ time: s
   const url = `https://quotes.money.163.com/service/chddata.html?code=${symbol}&start=${startStr}&end=${endStr}&fields=TOPEN;HIGH;LOW;TCLOSE;VOTURNOVER`;
 
   const res = await fetch(url, { cache: "no-store" });
-  const text = await res.text();
+  const buf = await res.arrayBuffer();
+  const decoder = new TextDecoder("gbk");
+  const text = decoder.decode(buf);
   const lines = text.trim().split("\n").slice(1); // skip header
 
   const data = lines
