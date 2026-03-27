@@ -171,47 +171,197 @@ function calcRSI(closes: number[], period = 14): number[] {
   return rsi;
 }
 
-interface SignalResult {
-  macd: { dif: number; dea: number; macd: number; signal: string };
-  rsi: { value: number; signal: string };
-  summary: string;
+// KDJ 计算
+function calcKDJ(highs: number[], lows: number[], closes: number[], period = 9) {
+  const k: number[] = new Array(closes.length).fill(50);
+  const d: number[] = new Array(closes.length).fill(50);
+  const j: number[] = new Array(closes.length).fill(50);
+  for (let i = period - 1; i < closes.length; i++) {
+    let hh = -Infinity, ll = Infinity;
+    for (let p = 0; p < period; p++) { hh = Math.max(hh, highs[i - p]); ll = Math.min(ll, lows[i - p]); }
+    const rsv = hh === ll ? 50 : ((closes[i] - ll) / (hh - ll)) * 100;
+    k[i] = i === period - 1 ? rsv : (2 / 3) * k[i - 1] + (1 / 3) * rsv;
+    d[i] = i === period - 1 ? k[i] : (2 / 3) * d[i - 1] + (1 / 3) * k[i];
+    j[i] = 3 * k[i] - 2 * d[i];
+  }
+  return { k, d, j };
 }
 
-function analyzeSignals(kline: Array<{ close: number }>): SignalResult {
+// 布林带计算
+function calcBoll(closes: number[], period = 20) {
+  const mid: number[] = [];
+  const upper: number[] = [];
+  const lower: number[] = [];
+  for (let i = 0; i < closes.length; i++) {
+    if (i < period - 1) { mid.push(0); upper.push(0); lower.push(0); continue; }
+    let sum = 0;
+    for (let j = 0; j < period; j++) sum += closes[i - j];
+    const avg = sum / period;
+    let variance = 0;
+    for (let j = 0; j < period; j++) variance += (closes[i - j] - avg) ** 2;
+    const std = Math.sqrt(variance / period);
+    mid.push(avg);
+    upper.push(avg + 2 * std);
+    lower.push(avg - 2 * std);
+  }
+  return { mid, upper, lower };
+}
+
+// MA 计算
+function calcMA(closes: number[], period: number): number[] {
+  const result: number[] = new Array(closes.length).fill(0);
+  for (let i = period - 1; i < closes.length; i++) {
+    let sum = 0;
+    for (let j = 0; j < period; j++) sum += closes[i - j];
+    result[i] = sum / period;
+  }
+  return result;
+}
+
+interface IndicatorScore {
+  name: string;
+  score: number; // -2 to +2
+  signal: string;
+  detail: string;
+}
+
+interface SignalResult {
+  indicators: IndicatorScore[];
+  totalScore: number;
+  maxScore: number;
+  grade: string;
+  gradeLabel: string;
+  summary: string;
+  // 保留旧字段兼容前端
+  macd: { dif: number; dea: number; macd: number; signal: string };
+  rsi: { value: number; signal: string };
+}
+
+function analyzeSignals(kline: Array<{ open: number; high: number; low: number; close: number; volume: number }>): SignalResult {
   const closes = kline.map((d) => d.close);
-  const { dif, dea, macd } = calcMACD(closes);
-  const rsi = calcRSI(closes);
+  const highs = kline.map((d) => d.high);
+  const lows = kline.map((d) => d.low);
+  const volumes = kline.map((d) => d.volume);
   const last = closes.length - 1;
   const prev = last - 1;
 
+  const indicators: IndicatorScore[] = [];
+
+  // 1. MACD 评分 (-2 to +2)
+  const { dif, dea, macd } = calcMACD(closes);
+  let macdScore = 0;
   let macdSignal = "观望";
-  if (dif[prev] <= dea[prev] && dif[last] > dea[last]) macdSignal = "金叉买入";
-  else if (dif[prev] >= dea[prev] && dif[last] < dea[last]) macdSignal = "死叉卖出";
-  else if (macd[last] > 0 && macd[last] > macd[prev]) macdSignal = "多头增强";
-  else if (macd[last] < 0 && macd[last] < macd[prev]) macdSignal = "空头增强";
-  else if (macd[last] > 0) macdSignal = "多头";
-  else if (macd[last] < 0) macdSignal = "空头";
+  const goldenCross = dif[prev] <= dea[prev] && dif[last] > dea[last];
+  const deathCross = dif[prev] >= dea[prev] && dif[last] < dea[last];
+  if (goldenCross && dif[last] > 0) { macdScore = 2; macdSignal = "零上金叉"; }
+  else if (goldenCross) { macdScore = 1; macdSignal = "金叉"; }
+  else if (deathCross && dif[last] < 0) { macdScore = -2; macdSignal = "零下死叉"; }
+  else if (deathCross) { macdScore = -1; macdSignal = "死叉"; }
+  else if (macd[last] > 0 && macd[last] > macd[prev]) { macdScore = 1; macdSignal = "多头放大"; }
+  else if (macd[last] < 0 && macd[last] < macd[prev]) { macdScore = -1; macdSignal = "空头放大"; }
+  else if (macd[last] > 0) { macdScore = 0; macdSignal = "多头"; }
+  else { macdScore = 0; macdSignal = "空头"; }
+  indicators.push({ name: "MACD", score: macdScore, signal: macdSignal, detail: `DIF:${dif[last].toFixed(2)} DEA:${dea[last].toFixed(2)}` });
 
-  let rsiSignal = "中性";
+  // 2. RSI 评分 (-2 to +2)
+  const rsi = calcRSI(closes);
   const rsiVal = rsi[last];
-  if (rsiVal > 80) rsiSignal = "超买警告";
-  else if (rsiVal > 70) rsiSignal = "偏强";
-  else if (rsiVal < 20) rsiSignal = "超卖机会";
-  else if (rsiVal < 30) rsiSignal = "偏弱";
+  let rsiScore = 0;
+  let rsiSignal = "中性";
+  if (rsiVal < 20) { rsiScore = 2; rsiSignal = "超卖"; }
+  else if (rsiVal < 30) { rsiScore = 1; rsiSignal = "偏弱"; }
+  else if (rsiVal > 80) { rsiScore = -2; rsiSignal = "超买"; }
+  else if (rsiVal > 70) { rsiScore = -1; rsiSignal = "偏强"; }
+  indicators.push({ name: "RSI", score: rsiScore, signal: rsiSignal, detail: `RSI:${rsiVal.toFixed(1)}` });
 
-  let summary = "";
-  if (macdSignal === "金叉买入" && rsiVal < 50) summary = "买入信号";
-  else if (macdSignal === "死叉卖出" && rsiVal > 50) summary = "卖出信号";
-  else if (rsiVal > 80) summary = "超买预警";
-  else if (rsiVal < 20) summary = "超卖机会";
-  else if (macdSignal.includes("多头")) summary = "偏多";
-  else if (macdSignal.includes("空头")) summary = "偏空";
-  else summary = "观望";
+  // 3. KDJ 评分 (-2 to +2)
+  const { k, d, j } = calcKDJ(highs, lows, closes);
+  let kdjScore = 0;
+  let kdjSignal = "中性";
+  const kGolden = k[prev] <= d[prev] && k[last] > d[last];
+  const kDeath = k[prev] >= d[prev] && k[last] < d[last];
+  if (kGolden && k[last] < 30) { kdjScore = 2; kdjSignal = "低位金叉"; }
+  else if (kGolden) { kdjScore = 1; kdjSignal = "金叉"; }
+  else if (kDeath && k[last] > 70) { kdjScore = -2; kdjSignal = "高位死叉"; }
+  else if (kDeath) { kdjScore = -1; kdjSignal = "死叉"; }
+  else if (j[last] < 0) { kdjScore = 1; kdjSignal = "J值超卖"; }
+  else if (j[last] > 100) { kdjScore = -1; kdjSignal = "J值超买"; }
+  indicators.push({ name: "KDJ", score: kdjScore, signal: kdjSignal, detail: `K:${k[last].toFixed(1)} D:${d[last].toFixed(1)} J:${j[last].toFixed(1)}` });
+
+  // 4. 均线排列 (-2 to +2)
+  const ma5 = calcMA(closes, 5);
+  const ma10 = calcMA(closes, 10);
+  const ma20 = calcMA(closes, 20);
+  let maScore = 0;
+  let maSignal = "混合";
+  if (ma5[last] > ma10[last] && ma10[last] > ma20[last]) {
+    maScore = closes[last] > ma5[last] ? 2 : 1;
+    maSignal = maScore === 2 ? "强势多头" : "多头排列";
+  } else if (ma5[last] < ma10[last] && ma10[last] < ma20[last]) {
+    maScore = closes[last] < ma5[last] ? -2 : -1;
+    maSignal = maScore === -2 ? "强势空头" : "空头排列";
+  } else if (ma5[last] > ma20[last]) {
+    maScore = 0; maSignal = "偏多震荡";
+  } else {
+    maScore = 0; maSignal = "偏空震荡";
+  }
+  indicators.push({ name: "均线", score: maScore, signal: maSignal, detail: `MA5:${ma5[last].toFixed(2)} MA10:${ma10[last].toFixed(2)} MA20:${ma20[last].toFixed(2)}` });
+
+  // 5. 布林带 (-2 to +2)
+  const { mid, upper, lower } = calcBoll(closes);
+  let bollScore = 0;
+  let bollSignal = "中轨附近";
+  if (closes[last] <= lower[last]) { bollScore = 2; bollSignal = "触及下轨"; }
+  else if (closes[last] < mid[last] && closes[last] > lower[last]) {
+    const pos = (closes[last] - lower[last]) / (mid[last] - lower[last]);
+    bollScore = pos < 0.3 ? 1 : 0;
+    bollSignal = bollScore === 1 ? "下轨附近" : "中下轨间";
+  } else if (closes[last] >= upper[last]) { bollScore = -2; bollSignal = "触及上轨"; }
+  else if (closes[last] > mid[last]) {
+    const pos = (closes[last] - mid[last]) / (upper[last] - mid[last]);
+    bollScore = pos > 0.7 ? -1 : 0;
+    bollSignal = bollScore === -1 ? "上轨附近" : "中上轨间";
+  }
+  indicators.push({ name: "布林", score: bollScore, signal: bollSignal, detail: `上:${upper[last].toFixed(2)} 中:${mid[last].toFixed(2)} 下:${lower[last].toFixed(2)}` });
+
+  // 6. 量价关系 (-2 to +2)
+  let volScore = 0;
+  let volSignal = "正常";
+  if (last >= 5) {
+    const avgVol5 = volumes.slice(last - 5, last).reduce((s, v) => s + v, 0) / 5;
+    const volRatio = avgVol5 > 0 ? volumes[last] / avgVol5 : 1;
+    const priceChange = (closes[last] - closes[prev]) / closes[prev] * 100;
+    if (volRatio > 2 && priceChange > 2) { volScore = 2; volSignal = "放量大涨"; }
+    else if (volRatio > 1.5 && priceChange > 0) { volScore = 1; volSignal = "放量上涨"; }
+    else if (volRatio > 2 && priceChange < -2) { volScore = -2; volSignal = "放量大跌"; }
+    else if (volRatio > 1.5 && priceChange < 0) { volScore = -1; volSignal = "放量下跌"; }
+    else if (volRatio < 0.5 && priceChange > 0) { volScore = 0; volSignal = "缩量上涨"; }
+    else if (volRatio < 0.5 && priceChange < 0) { volScore = 0; volSignal = "缩量下跌"; }
+  }
+  indicators.push({ name: "量价", score: volScore, signal: volSignal, detail: `量比:${volumes[last] > 0 ? (volumes[last] / (volumes.slice(last - 5, last).reduce((s, v) => s + v, 0) / 5)).toFixed(2) : "N/A"}` });
+
+  // 综合评分
+  const totalScore = indicators.reduce((s, i) => s + i.score, 0);
+  const maxScore = indicators.length * 2;
+
+  let grade: string, gradeLabel: string;
+  if (totalScore >= 8) { grade = "A+"; gradeLabel = "强烈买入"; }
+  else if (totalScore >= 5) { grade = "A"; gradeLabel = "买入"; }
+  else if (totalScore >= 2) { grade = "B"; gradeLabel = "偏多"; }
+  else if (totalScore >= -1) { grade = "C"; gradeLabel = "观望"; }
+  else if (totalScore >= -4) { grade = "D"; gradeLabel = "偏空"; }
+  else if (totalScore >= -7) { grade = "E"; gradeLabel = "卖出"; }
+  else { grade = "E-"; gradeLabel = "强烈卖出"; }
 
   return {
+    indicators,
+    totalScore,
+    maxScore,
+    grade,
+    gradeLabel,
+    summary: `${grade} ${gradeLabel}`,
     macd: { dif: dif[last], dea: dea[last], macd: macd[last], signal: macdSignal },
     rsi: { value: rsiVal, signal: rsiSignal },
-    summary,
   };
 }
 

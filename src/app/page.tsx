@@ -40,7 +40,11 @@ interface WatchRow extends WatchItem {
   currentPrice: number;
   change: number;
   changePercent: number;
-  signals?: { macd: { signal: string }; rsi: { value: number; signal: string }; summary: string };
+  signals?: {
+    indicators: Array<{ name: string; score: number; signal: string; detail: string }>;
+    totalScore: number; maxScore: number; grade: string; gradeLabel: string; summary: string;
+    macd: { signal: string }; rsi: { value: number; signal: string };
+  };
 }
 
 export default function Home() {
@@ -206,6 +210,14 @@ export default function Home() {
   const pnlColor = (v: number) => (v > 0 ? "text-[var(--color-red)]" : v < 0 ? "text-[var(--color-green)]" : "text-[var(--color-text-muted)]");
   const fmt = (v: number) => v.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  const gradeColor = (g: string) => {
+    if (g === "A+" || g === "A") return "bg-red-900/30 text-[var(--color-red)]";
+    if (g === "B") return "bg-red-900/15 text-[var(--color-red)]";
+    if (g === "C") return "bg-[var(--color-border)] text-[var(--color-text-muted)]";
+    if (g === "D") return "bg-green-900/15 text-[var(--color-green)]";
+    return "bg-green-900/30 text-[var(--color-green)]";
+  };
+
   const signalColor = (s: string) => {
     if (s.includes("买入") || s.includes("超卖") || s.includes("偏多")) return "text-[var(--color-red)] bg-red-900/20";
     if (s.includes("卖出") || s.includes("超买") || s.includes("偏空")) return "text-[var(--color-green)] bg-green-900/20";
@@ -359,9 +371,8 @@ export default function Home() {
                     <th className="text-left p-3">股票</th>
                     <th className="text-right p-3">现价</th>
                     <th className="text-right p-3">涨跌</th>
-                    <th className="text-center p-3">MACD</th>
-                    <th className="text-center p-3">RSI</th>
-                    <th className="text-center p-3">综合信号</th>
+                    <th className="text-center p-3">评级</th>
+                    <th className="text-left p-3">指标详情</th>
                     <th className="text-center p-3">操作</th>
                   </tr>
                 </thead>
@@ -390,19 +401,24 @@ export default function Home() {
                       <td className={`text-right p-3 font-mono ${pnlColor(w.change)}`}>{w.change > 0 ? "+" : ""}{w.changePercent.toFixed(2)}%</td>
                       <td className="text-center p-3">
                         {w.signals ? (
-                          <span className={`text-xs px-2 py-0.5 rounded ${signalColor(w.signals.macd.signal)}`}>{w.signals.macd.signal}</span>
+                          <div>
+                            <span className={`text-sm font-bold px-2 py-1 rounded ${gradeColor(w.signals.grade)}`}>
+                              {w.signals.grade}
+                            </span>
+                            <div className="text-xs mt-1">{w.signals.gradeLabel}</div>
+                            <div className="text-xs text-[var(--color-text-muted)]">{w.signals.totalScore}/{w.signals.maxScore}分</div>
+                          </div>
                         ) : <span className="text-xs text-[var(--color-text-muted)]">计算中...</span>}
                       </td>
-                      <td className="text-center p-3">
+                      <td className="text-left p-3">
                         {w.signals ? (
-                          <span className={`text-xs px-2 py-0.5 rounded ${signalColor(w.signals.rsi.signal)}`}>
-                            {w.signals.rsi.value.toFixed(1)} {w.signals.rsi.signal}
-                          </span>
-                        ) : <span className="text-xs text-[var(--color-text-muted)]">...</span>}
-                      </td>
-                      <td className="text-center p-3">
-                        {w.signals ? (
-                          <span className={`text-xs px-2 py-1 rounded font-bold ${signalColor(w.signals.summary)}`}>{w.signals.summary}</span>
+                          <div className="flex flex-wrap gap-1">
+                            {w.signals.indicators.map((ind) => (
+                              <span key={ind.name} title={ind.detail} className={`text-xs px-1.5 py-0.5 rounded cursor-default ${ind.score >= 2 ? "bg-red-900/30 text-[var(--color-red)]" : ind.score === 1 ? "bg-red-900/15 text-[var(--color-red)]" : ind.score <= -2 ? "bg-green-900/30 text-[var(--color-green)]" : ind.score === -1 ? "bg-green-900/15 text-[var(--color-green)]" : "bg-[var(--color-border)] text-[var(--color-text-muted)]"}`}>
+                                {ind.name}{ind.score > 0 ? "+" : ""}{ind.score} {ind.signal}
+                              </span>
+                            ))}
+                          </div>
                         ) : <span className="text-xs text-[var(--color-text-muted)]">...</span>}
                       </td>
                       <td className="text-center p-3 whitespace-nowrap">
@@ -424,7 +440,7 @@ export default function Home() {
                       </td>
                     </tr>
                   ))}
-                  {watchRows.length === 0 && <tr><td colSpan={7} className="text-center p-6 text-[var(--color-text-muted)]">暂无备选股票</td></tr>}
+                  {watchRows.length === 0 && <tr><td colSpan={6} className="text-center p-6 text-[var(--color-text-muted)]">暂无备选股票</td></tr>}
                 </tbody>
               </table>
             </div>
