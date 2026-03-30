@@ -16,6 +16,7 @@
     "@tailwindcss/postcss": "^4.2.2",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
+    "@upstash/redis": "^1.37.0",
     "lightweight-charts": "^5.1.0",
     "next": "^16.2.1",
     "postcss": "^8.5.8",

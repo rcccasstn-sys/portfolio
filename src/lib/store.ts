@@ -1,39 +1,92 @@
 import { Holding, defaultHoldings, WatchItem, defaultWatchlist } from "./holdings";
 import fs from "fs";
 import path from "path";
+import { Redis } from "@upstash/redis";
 
-const DATA_FILE = path.join(process.cwd(), "data", "holdings.json");
-const WATCH_FILE = path.join(process.cwd(), "data", "watchlist.json");
+const DATA_DIR = path.join(process.cwd(), "data");
 
 function ensureDataDir() {
-  const dir = path.dirname(DATA_FILE);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-export function getHoldings(): Holding[] {
-  ensureDataDir();
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(defaultHoldings, null, 2));
-    return defaultHoldings;
+// === Storage Backend ===
+// 有 UPSTASH_REDIS_REST_URL 时用 Redis，否则用本地 JSON 文件
+let _redis: Redis | null = null;
+
+function getRedis(): Redis | null {
+  if (_redis) return _redis;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (url && token) {
+    _redis = new Redis({ url, token });
   }
-  return JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+  return _redis;
 }
 
-export function saveHoldings(holdings: Holding[]) {
-  ensureDataDir();
-  fs.writeFileSync(DATA_FILE, JSON.stringify(holdings, null, 2));
-}
-
-export function getWatchlist(): WatchItem[] {
-  ensureDataDir();
-  if (!fs.existsSync(WATCH_FILE)) {
-    fs.writeFileSync(WATCH_FILE, JSON.stringify(defaultWatchlist, null, 2));
-    return defaultWatchlist;
+async function kvGet<T>(key: string, fallback: T): Promise<T> {
+  const redis = getRedis();
+  if (redis) {
+    const data = await redis.get<T>(`portfolio:${key}`);
+    return data ?? fallback;
   }
-  return JSON.parse(fs.readFileSync(WATCH_FILE, "utf-8"));
+  const filePath = path.join(DATA_DIR, `${key}.json`);
+  try {
+    if (fs.existsSync(filePath)) return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  } catch { /* ignore */ }
+  return fallback;
 }
 
-export function saveWatchlist(list: WatchItem[]) {
+async function kvSet<T>(key: string, value: T): Promise<void> {
+  const redis = getRedis();
+  if (redis) {
+    await redis.set(`portfolio:${key}`, value);
+    return;
+  }
   ensureDataDir();
-  fs.writeFileSync(WATCH_FILE, JSON.stringify(list, null, 2));
+  fs.writeFileSync(path.join(DATA_DIR, `${key}.json`), JSON.stringify(value, null, 2));
+}
+
+// === Holdings ===
+export async function getHoldings(): Promise<Holding[]> {
+  return kvGet("holdings", defaultHoldings);
+}
+
+export async function saveHoldings(holdings: Holding[]): Promise<void> {
+  await kvSet("holdings", holdings);
+}
+
+// === Watchlist ===
+export async function getWatchlist(): Promise<WatchItem[]> {
+  return kvGet("watchlist", defaultWatchlist);
+}
+
+export async function saveWatchlist(list: WatchItem[]): Promise<void> {
+  await kvSet("watchlist", list);
+}
+
+// === Alert State ===
+export interface AlertEntry {
+  lastSentAt: number;
+  acknowledged: boolean;
+  acknowledgedRating?: number; // 已读时的原始评分（连续值1-10）
+}
+
+export type AlertState = Record<string, AlertEntry>;
+
+export async function loadAlertState(): Promise<AlertState> {
+  return kvGet("alert-state", {});
+}
+
+export async function saveAlertState(state: AlertState): Promise<void> {
+  await kvSet("alert-state", state);
+}
+
+// === Telegram Offset ===
+export async function loadOffset(): Promise<number> {
+  const data = await kvGet<{ offset: number }>("telegram-offset", { offset: 0 });
+  return data.offset || 0;
+}
+
+export async function saveOffset(offset: number): Promise<void> {
+  await kvSet("telegram-offset", { offset });
 }
