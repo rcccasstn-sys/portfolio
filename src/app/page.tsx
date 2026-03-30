@@ -114,8 +114,10 @@ export default function Home() {
     const uniqueItems = allItems.filter((item, i, arr) => arr.findIndex((a) => a.code === item.code) === i);
     let quotes: Record<string, Quote> = {};
     if (uniqueItems.length) {
-      const quoteRes = await fetch(`/api/stock?action=quote&codes=${uniqueItems.map((i) => i.code).join(",")}&markets=${uniqueItems.map((i) => i.market).join(",")}`);
-      quotes = await quoteRes.json();
+      try {
+        const quoteRes = await fetch(`/api/stock?action=quote&codes=${uniqueItems.map((i) => i.code).join(",")}&markets=${uniqueItems.map((i) => i.market).join(",")}`);
+        if (quoteRes.ok) quotes = await quoteRes.json();
+      } catch { /* ignore */ }
     }
 
     // Build holding rows
@@ -139,20 +141,25 @@ export default function Home() {
     // Fetch signals for all stocks (holdings + watchlist)
     const allForSignals = [...holds, ...watches];
     if (allForSignals.length) {
-      const sigRes = await fetch(`/api/stock?action=signals&codes=${allForSignals.map((s) => s.code).join(",")}&markets=${allForSignals.map((s) => s.market).join(",")}`);
-      const sigs = await sigRes.json();
-      setRows((prev) => prev.map((r) => ({ ...r, signals: sigs[r.code] })));
-      setWatchRows((prev) => prev.map((w) => ({ ...w, signals: sigs[w.code] })));
+      try {
+        const sigRes = await fetch(`/api/stock?action=signals&codes=${allForSignals.map((s) => s.code).join(",")}&markets=${allForSignals.map((s) => s.market).join(",")}`);
+        if (sigRes.ok) {
+          const sigs = await sigRes.json();
+          setRows((prev) => prev.map((r) => ({ ...r, signals: sigs[r.code] })));
+          setWatchRows((prev) => prev.map((w) => ({ ...w, signals: sigs[w.code] })));
+        }
+      } catch { /* signals fetch failed, skip */ }
     }
 
     setLastUpdate(new Date().toLocaleTimeString("zh-CN"));
     setLoading(false);
   }, []);
 
+  // Alert 和 Telegram 轮询由 VM 的 alert-loop.sh 负责，网页只刷新行情数据
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
+    return () => { clearInterval(interval); };
   }, [fetchData]);
 
   const totalValue = rows.reduce((s, r) => s + r.marketValue, 0);
@@ -295,8 +302,8 @@ export default function Home() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.code} className="border-b border-[var(--color-border)] hover:bg-[#1a1a1a]">
+                  {rows.map((r, idx) => (
+                    <tr key={`${r.code}-${idx}`} className="border-b border-[var(--color-border)] hover:bg-[#1a1a1a]">
                       <td className="p-3">
                         <Link href={`/stock/${r.code}?market=${r.market}&name=${encodeURIComponent(r.name)}`} className="hover:text-[var(--color-blue)]">
                           <div className="font-medium">{r.name}</div>
