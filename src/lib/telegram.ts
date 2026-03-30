@@ -1,4 +1,5 @@
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+// 持仓管理用 PORTFOLIO_BOT，Claude对话用 TELEGRAM_BOT
+const BOT_TOKEN = process.env.PORTFOLIO_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || "";
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
 
 export async function sendTelegram(text: string): Promise<boolean> {

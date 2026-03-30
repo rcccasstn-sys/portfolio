@@ -2,21 +2,6 @@ import { NextResponse } from "next/server";
 import { sendTelegram, getUpdates } from "@/lib/telegram";
 import { getHoldings, saveHoldings, getWatchlist, saveWatchlist, loadAlertState, saveAlertState, loadOffset, saveOffset } from "@/lib/store";
 import { Holding, WatchItem } from "@/lib/holdings";
-import { execFile } from "child_process";
-
-function askClaude(question: string): Promise<string> {
-  return new Promise((resolve) => {
-    const child = execFile("claude", ["-p"], { timeout: 60000 }, (error, stdout, stderr) => {
-      if (error) {
-        resolve("Claude 暂时无法回复，请稍后再试");
-        return;
-      }
-      resolve(stdout.trim() || "Claude 没有返回内容");
-    });
-    child.stdin?.write(question);
-    child.stdin?.end();
-  });
-}
 
 // Fetch quotes
 async function fetchQuotes(codes: string[], markets: string[]) {
@@ -354,9 +339,8 @@ async function handleCommand(text: string): Promise<string> {
     ].join("\n");
   }
 
-  // 未匹配指令，转给 Claude
-  const reply = await askClaude(cmd);
-  return reply;
+  // 未匹配指令，忽略（Claude 对话由 asstncc bot 通过 openclaw 处理）
+  return "";
 }
 
 export async function GET() {
