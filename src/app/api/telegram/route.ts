@@ -243,7 +243,7 @@ async function handleCommand(text: string): Promise<string> {
   }
 
   // === 已读告警（指定股票）: 已读 代码/名称 ===
-  const ackMatch = cmd.match(/^已读\s+(.+)$/);
+  const ackMatch = cmd.match(/^已读\s*(.+)$/);
   if (ackMatch) {
     const query = ackMatch[1].trim();
     const allItems = [...await getWatchlist(), ...await getHoldings()];
