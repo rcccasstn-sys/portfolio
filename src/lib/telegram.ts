@@ -42,10 +42,12 @@ export async function getUpdates(offset: number): Promise<TelegramUpdate[]> {
     );
     const data = await res.json();
     if (!data.ok) return [];
-    return (data.result || []).filter(
-      (u: TelegramUpdate) => u.message && String(u.message.chat.id) === CHAT_ID
-    );
+    return data.result || [];
   } catch {
     return [];
   }
+}
+
+export function isTargetChat(update: TelegramUpdate): boolean {
+  return !!update.message && String(update.message.chat.id) === CHAT_ID;
 }

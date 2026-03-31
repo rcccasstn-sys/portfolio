@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { sendTelegram, getUpdates } from "@/lib/telegram";
+import { sendTelegram, getUpdates, isTargetChat } from "@/lib/telegram";
 import { getHoldings, saveHoldings, getWatchlist, saveWatchlist, loadAlertState, saveAlertState, loadOffset, saveOffset } from "@/lib/store";
 import { Holding, WatchItem } from "@/lib/holdings";
 
@@ -351,7 +351,10 @@ export async function GET() {
 
   for (const update of updates) {
     offset = update.update_id + 1;
-    await saveOffset(offset); // 立即保存，防止重启后重复处理
+    await saveOffset(offset); // 立即保存，推进 offset（包括群消息）
+
+    // 只处理目标私聊的消息，跳过群消息
+    if (!isTargetChat(update)) continue;
 
     const text = update.message?.text;
     if (!text) continue;
