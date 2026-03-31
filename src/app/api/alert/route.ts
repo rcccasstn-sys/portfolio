@@ -121,7 +121,7 @@ export async function GET() {
 
     const key = `buy:${item.code}`;
 
-    if (rating >= 6 && !ema60wAbove && !macdBearish) {
+    if (raw >= 5.5 && !ema60wAbove && !macdBearish) {
       const existing = state[key];
       const quote = quotes[item.code];
 
@@ -179,8 +179,8 @@ export async function GET() {
         triggered.push(key);
       }
     } else {
-      // 条件不再满足，清除状态
-      if (state[key]) delete state[key];
+      // 条件不再满足，只清除未已读的状态（保留已读标记防止重复告警）
+      if (state[key] && !state[key].acknowledged) delete state[key];
     }
   }
 
@@ -210,7 +210,7 @@ export async function GET() {
 
     const key = `sell:${item.code}`;
 
-    if (rating <= 4 && macdBearish) {
+    if (raw <= 4.5 && macdBearish) {
       const existing = state[key];
       const quote = quotes[item.code];
 
@@ -274,8 +274,8 @@ export async function GET() {
         triggered.push(key);
       }
     } else {
-      // 条件不再满足，清除状态
-      if (state[key]) delete state[key];
+      // 条件不再满足，只清除未已读的状态（保留已读标记防止重复告警）
+      if (state[key] && !state[key].acknowledged) delete state[key];
     }
   }
 
