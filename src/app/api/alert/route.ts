@@ -121,15 +121,14 @@ export async function GET() {
 
     const key = `buy:${item.code}`;
 
+    // --- 低位买入：评分≥5.5 + 60周均线下方 + MACD非空头 ---
     if (raw >= 5.5 && !ema60wAbove && !macdBearish) {
       const existing = state[key];
       const quote = quotes[item.code];
 
-      // 已读状态：检查是否满足重新告警条件
       if (existing?.acknowledged) {
         const ackRating = existing.acknowledgedRating || 0;
         if (raw >= ackRating + 0.5 && macdBullish) {
-          // 评分走高 + MACD买入确认 → 重新告警
           const priceLine = quote
             ? `现价: ${quote.price.toFixed(2)} (${pctFmt(quote.changePercent)})`
             : "";
@@ -151,11 +150,9 @@ export async function GET() {
           state[key] = { lastSentAt: now, acknowledged: false };
           triggered.push(key);
         }
-        // 未满足重新告警条件，保持暂停
         continue;
       }
 
-      // 正常告警（未已读）
       if (!existing || (now - existing.lastSentAt >= RESEND_INTERVAL)) {
         const priceLine = quote
           ? `现价: ${quote.price.toFixed(2)} (${pctFmt(quote.changePercent)})`
@@ -170,7 +167,7 @@ export async function GET() {
           `MACD: ${macdSignal}`,
           `RSI: ${signal.rsi?.value?.toFixed(1) || "-"}`,
           ``,
-          `⬆️ 评分≥6 + 低于60周均线 + MACD非空头，关注买入`,
+          `⬆️ 评分≥5.5 + 低于60周均线 + MACD非空头，关注买入`,
           ``,
           `回复「已读 ${item.code}」暂停提醒`,
         ].join("\n");
@@ -178,9 +175,67 @@ export async function GET() {
         state[key] = { lastSentAt: now, acknowledged: false };
         triggered.push(key);
       }
+    }
+    // --- 追涨信号：评分≥7 + 60周均线上方 + MACD多头确认 ---
+    else if (raw >= 6.5 && ema60wAbove && macdBullish) {
+      const chaseKey = `chase:${item.code}`;
+      const existing = state[chaseKey];
+      const quote = quotes[item.code];
+
+      if (existing?.acknowledged) {
+        const ackRating = existing.acknowledgedRating || 0;
+        if (raw >= ackRating + 0.5 && macdBullish) {
+          const priceLine = quote
+            ? `现价: ${quote.price.toFixed(2)} (${pctFmt(quote.changePercent)})`
+            : "";
+          const msg = [
+            `🚀 *备选股追涨信号升级*`,
+            ``,
+            `*${item.name}* (${item.code})`,
+            priceLine,
+            `评分: ${fmtR(raw)}/10 (${signal.ratingLabel}) ⬆️ 从 ${fmtR(ackRating)} 升至 ${fmtR(raw)}`,
+            `MACD: ${macdSignal} ← 多头确认`,
+            `RSI: ${signal.rsi?.value?.toFixed(1) || "-"}`,
+            `W60: 价格在60周均线上方（强势）`,
+            ``,
+            `🚀 评分上升${fmtR(raw - ackRating)}，强势追涨信号`,
+            ``,
+            `回复「已读 ${item.code}」暂停提醒`,
+          ].join("\n");
+          await sendTelegram(msg);
+          state[chaseKey] = { lastSentAt: now, acknowledged: false };
+          triggered.push(chaseKey);
+        }
+        continue;
+      }
+
+      if (!existing || (now - existing.lastSentAt >= RESEND_INTERVAL)) {
+        const priceLine = quote
+          ? `现价: ${quote.price.toFixed(2)} (${pctFmt(quote.changePercent)})`
+          : "";
+        const msg = [
+          `🚀 *备选股追涨信号*`,
+          ``,
+          `*${item.name}* (${item.code})`,
+          priceLine,
+          `评分: ${fmtR(raw)}/10 (${signal.ratingLabel})`,
+          `W60: 价格在60周均线上方（强势）`,
+          `MACD: ${macdSignal} ← 多头确认`,
+          `RSI: ${signal.rsi?.value?.toFixed(1) || "-"}`,
+          ``,
+          `🚀 评分≥6.5 + 突破60周均线 + MACD多头，强势追涨`,
+          ``,
+          `回复「已读 ${item.code}」暂停提醒`,
+        ].join("\n");
+        await sendTelegram(msg);
+        state[chaseKey] = { lastSentAt: now, acknowledged: false };
+        triggered.push(chaseKey);
+      }
     } else {
-      // 条件不再满足，只清除未已读的状态（保留已读标记防止重复告警）
+      // 条件不再满足，只清除未已读的状态
       if (state[key] && !state[key].acknowledged) delete state[key];
+      const chaseKey = `chase:${item.code}`;
+      if (state[chaseKey] && !state[chaseKey].acknowledged) delete state[chaseKey];
     }
   }
 
@@ -284,10 +339,10 @@ export async function GET() {
   const holdCodes = new Set(holdings.map((h) => h.code));
   for (const key of Object.keys(state)) {
     if (key === "ratelimit") continue;
-    const m = key.match(/^(buy|sell):(.+)$/);
+    const m = key.match(/^(buy|sell|chase):(.+)$/);
     if (!m) continue;
     const [, type, code] = m;
-    if (type === "buy" && !watchCodes.has(code)) delete state[key];
+    if ((type === "buy" || type === "chase") && !watchCodes.has(code)) delete state[key];
     if (type === "sell" && !holdCodes.has(code)) delete state[key];
   }
 

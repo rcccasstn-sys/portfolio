@@ -252,15 +252,12 @@ async function handleCommand(text: string): Promise<string> {
     } catch { /* ignore */ }
 
     let acked = false;
-    if (state[buyKey]) {
-      state[buyKey].acknowledged = true;
-      state[buyKey].acknowledgedRating = currentRawRating;
-      acked = true;
-    }
-    if (state[sellKey]) {
-      state[sellKey].acknowledged = true;
-      state[sellKey].acknowledgedRating = currentRawRating;
-      acked = true;
+    for (const k of [buyKey, sellKey, `chase:${target.code}`]) {
+      if (state[k]) {
+        state[k].acknowledged = true;
+        state[k].acknowledgedRating = currentRawRating;
+        acked = true;
+      }
     }
 
     if (acked) {
@@ -279,7 +276,7 @@ async function handleCommand(text: string): Promise<string> {
 
     for (const key of Object.keys(state)) {
       if (key === "ratelimit" || state[key].acknowledged) continue;
-      const codeMatch = key.match(/^(?:buy|sell):(.+)$/);
+      const codeMatch = key.match(/^(?:buy|sell|chase):(.+)$/);
       if (!codeMatch) continue;
       const code = codeMatch[1];
       const item = allItems.find((i) => i.code === code);
