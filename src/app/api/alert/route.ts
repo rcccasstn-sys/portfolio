@@ -232,10 +232,8 @@ export async function GET() {
         triggered.push(chaseKey);
       }
     } else {
-      // 条件不再满足，只清除未已读的状态
-      if (state[key] && !state[key].acknowledged) delete state[key];
-      const chaseKey = `chase:${item.code}`;
-      if (state[chaseKey] && !state[chaseKey].acknowledged) delete state[chaseKey];
+      // 条件不再满足，保留 entry（由 RESEND_INTERVAL 控制频率，避免条件波动导致重复告警）
+      // 只有已读 entry 在条件不满足时才清理（释放已读锁，下次条件满足可重新告警）
     }
   }
 
@@ -329,8 +327,7 @@ export async function GET() {
         triggered.push(key);
       }
     } else {
-      // 条件不再满足，只清除未已读的状态（保留已读标记防止重复告警）
-      if (state[key] && !state[key].acknowledged) delete state[key];
+      // 条件不再满足，保留 entry（由 RESEND_INTERVAL 控制频率）
     }
   }
 
