@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getWatchlist, getHoldings, loadAlertState, saveAlertState } from "@/lib/store";
 import { sendTelegram } from "@/lib/telegram";
 
+// 紧急关闭股票信号推送（默认开启，设环境变量 ALERTS_DISABLED=0 才会推送）
+// 要恢复推送：在 Vercel 项目里把 ALERTS_DISABLED 改成 0 或删除变量
+const ALERTS_DISABLED = (process.env.ALERTS_DISABLED ?? "1") === "1";
+
 // Fetch quotes from Sina
 async function fetchQuotes(codes: string[], markets: string[]) {
   const sinaCodes = codes.map((c, i) => {
@@ -67,6 +71,13 @@ function fmtR(v: number) { return v.toFixed(1); }
 function pctFmt(v: number) { return v >= 0 ? `+${v.toFixed(2)}%` : `${v.toFixed(2)}%`; }
 
 export async function GET() {
+  if (ALERTS_DISABLED) {
+    return NextResponse.json({
+      disabled: true,
+      reason: "ALERTS_DISABLED env (default true)",
+      time: new Date().toISOString(),
+    });
+  }
   // Only run during trading hours: Mon-Fri 8:00-16:00 CST
   const cst = new Date(Date.now() + 8 * 3600 * 1000);
   const dow = cst.getUTCDay(); // 0=Sun, 6=Sat
